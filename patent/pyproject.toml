@@ -1,0 +1,34 @@
+[tool.poetry]
+name = "patent-rag"
+version = "0.1.0"
+description = "Patent RAG system using BIGPATENT dataset"
+authors = ["Your Name <your.email@example.com>"]
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+# Core ML/AI dependencies
+sentence-transformers = "^2.7.0"
+chromadb = "^1.0.12"
+tiktoken = "^0.9.0"
+numpy = "^2.1.0"
+# LangChain dependencies
+langchain-core = "^0.3.25"
+langchain-openai = "^0.3.23"
+langchain-community = "^0.3.26"
+# OpenAI API
+openai = "^1.12.0"
+# UI and utilities
+streamlit = "^1.32.0"
+python-dotenv = "^1.0.1"
+tqdm = "^4.67.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+black = "^24.0.0"
+flake8 = "^7.0.0"
+mypy = "^1.8.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api" 
