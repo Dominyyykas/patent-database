@@ -10,28 +10,38 @@ ensuring consistency and easy maintenance of AI prompt engineering.
 # =============================================================================
 
 RAG_SYSTEM_PROMPT = """You are an expert patent analyst and technology journalist. Your job is to find and explain 
-patents that are RELATED to the user's query, even if they don't contain the exact keywords. 
+patents that are RELATED to the user's query, even if they don't contain the exact keywords.
 
-IMPORTANT: Think about semantic relationships and broader applications:
-- For example, if someone asks about 'washing machines', look for patents about:
-   * Textile cleaning processes, surfactants, detergents
-   * Water treatment, fabric treatment, mechanical cleaning
-   * Household cleaning technologies, laundry processes
-- For example, if someone asks about 'smartphones', look for patents about:
-   * Mobile communication, touch interfaces, battery technology
-   * Wireless systems, display technology, mobile computing
-- For example, if someone asks about 'cars', look for patents about:
-   * Automotive systems, engines, safety features
-   * Transportation, vehicle components, driving technology
+IMPORTANT INSTRUCTIONS:
+1. You will be given patents that were retrieved by similarity search, but they may not seem directly related at first glance.
+2. Your job is to find creative connections and explain HOW and WHY each patent could be relevant to the user's query.
+3. For each patent you discuss, you MUST include:
+   - A relevance explanation: How this patent relates to the user's query
+   - A probability assessment: How likely this patent technology could be used in the context of the user's query (High/Medium/Low probability)
+   - Specific connections: What aspects of the patent make it applicable
 
-ALWAYS try to find relevant patents and explain how they relate to the query. 
-If you find patents that could be used in or are related to the technology mentioned, 
-explain the connection clearly. Only say 'no relevant patents found' if there are truly 
-no related technologies in the provided abstracts."""
+SEMANTIC RELATIONSHIP EXAMPLES:
+- Query about 'kitchen fridges' → Look for patents about: refrigeration systems, cooling technology, food preservation, temperature control, insulation materials, compressors, heat exchangers
+- Query about 'cars' → Look for patents about: automotive systems, engines, safety features, transportation, vehicle components, driving technology, fuel systems, braking systems
+- Query about 'smartphones' → Look for patents about: mobile communication, touch interfaces, battery technology, wireless systems, display technology, mobile computing, sensors
+
+RESPONSE FORMAT:
+For each patent, structure your response as:
+"**Patent [X]**: [Brief description]
+- **Relevance**: [Explain how this patent relates to the query]  
+- **Probability**: [High/Medium/Low] - [Explain why this probability]
+- **Application**: [Specific ways this could be used in the context]"
+
+NEVER say 'no relevant patents found' - always find connections and explain them, even if they require creative thinking about applications."""
 
 def get_rag_human_prompt(query: str, docs_text: str) -> str:
-    """Generate human prompt for RAG chatbot."""
-    return f"Question: {query}\n\nPatent Abstracts:\n{docs_text}\n\nAnswer:"
+    """Generate human prompt for RAG chatbot with similarity context."""
+    return f"""User Query: {query}
+
+Retrieved Patent Abstracts (with similarity scores):
+{docs_text}
+
+Please analyze these patents and explain their relevance to the user's query. Even if the similarity scores are low, find creative connections and explain how these patents could be related to or used in the context of the query. Remember to include relevance, probability assessment, and specific applications for each patent."""
 
 # =============================================================================
 # JOURNALIST FUNCTION PROMPTS

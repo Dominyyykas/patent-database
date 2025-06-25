@@ -97,38 +97,37 @@ class PatentChatbot:
     
     def _retrieve_relevant_patents(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
         """
-        Retrieve relevant patents from the vector store.
+        Retrieve patents from the vector store without score filtering.
+        Returns the most similar patents regardless of score - let the LLM determine relevance.
         
         Args:
             query: User query
             k: Number of patents to retrieve
             
         Returns:
-            List of relevant patent documents
+            List of patent documents (always returns results if available)
         """
         if not self.vector_store:
             logger.warning("Vector store not available, returning empty results")
             return []
-        
+
         try:
             results = self.vector_store.similarity_search_with_relevance_scores(query, k=k)
             patents = []
             
-            logger.info(f"Found {len(results)} raw results for query: '{query}'")
+            logger.info(f"Found {len(results)} results for query: '{query}'")
             
+            # Return all results without score filtering - let LLM determine relevance
             for doc, score in results:
-                logger.info(f"Result score: {score:.3f}")
-                if score > 0.4:  # Lower threshold to include more relevant results
-                    patent_info = {
-                        'content': doc.page_content,
-                        'metadata': doc.metadata,
-                        'relevance_score': score
-                    }
-                    patents.append(patent_info)
-                else:
-                    logger.info(f"Filtered out result with score {score:.3f} (below 0.4 threshold)")
+                logger.info(f"Including patent with similarity score: {score:.3f}")
+                patent_info = {
+                    'content': doc.page_content,
+                    'metadata': doc.metadata,
+                    'similarity_score': score  # Keep score for LLM context
+                }
+                patents.append(patent_info)
             
-            logger.info(f"Retrieved {len(patents)} relevant patents (after filtering)")
+            logger.info(f"Retrieved {len(patents)} patents (no filtering applied)")
             return patents
         except Exception as e:
             logger.error(f"Error retrieving patents: {e}")
@@ -186,12 +185,14 @@ class PatentChatbot:
             return cached_response
         
         try:
-            # Retrieve relevant patents
+            # Retrieve relevant patents (now always returns results if available)
             relevant_patents = self._retrieve_relevant_patents(user_input)
             
+            # We now always process patents if any exist in the database
+            # The LLM will explain relevance and probability
             if not relevant_patents:
                 return {
-                    "response": "I couldn't find any relevant patents in the database for your query. Please try rephrasing your question or ask about a different topic.",
+                    "response": "I couldn't access the patent database or no patents were found. Please try again later.",
                     "patents": [],
                     "journalist_analysis": None
                 }
@@ -210,8 +211,11 @@ class PatentChatbot:
                 
                 # Generate general response
                 system_prompt = RAG_SYSTEM_PROMPT
-                # Format patents for the prompt
-                docs_text = "\n\n".join([f"Patent {i+1}: {patent['content']}" for i, patent in enumerate(relevant_patents)])
+                # Format patents for the prompt with similarity scores
+                docs_text = "\n\n".join([
+                    f"Patent {i+1} (Similarity Score: {patent.get('similarity_score', 0):.3f}): {patent['content']}" 
+                    for i, patent in enumerate(relevant_patents)
+                ])
                 human_prompt = get_rag_human_prompt(user_input, docs_text)
                 
                 messages = [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
@@ -225,8 +229,11 @@ class PatentChatbot:
             else:
                 # Standard chat response
                 system_prompt = RAG_SYSTEM_PROMPT
-                # Format patents for the prompt
-                docs_text = "\n\n".join([f"Patent {i+1}: {patent['content']}" for i, patent in enumerate(relevant_patents)])
+                # Format patents for the prompt with similarity scores
+                docs_text = "\n\n".join([
+                    f"Patent {i+1} (Similarity Score: {patent.get('similarity_score', 0):.3f}): {patent['content']}" 
+                    for i, patent in enumerate(relevant_patents)
+                ])
                 human_prompt = get_rag_human_prompt(user_input, docs_text)
                 
                 messages = [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
