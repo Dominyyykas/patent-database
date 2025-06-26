@@ -4,8 +4,8 @@ import csv
 from io import StringIO
 import time
 
-from src.core.chatbot import PatentChatbot
-from src.core.journalist_functions import (
+from src.core.patent_engine import (
+    PatentChatbot,
     analyze_patent_impact,
     generate_article_titles,
     generate_article_angles

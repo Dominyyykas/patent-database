@@ -1,11 +1,11 @@
 """
 Core modules for the Patent RAG system.
 
-Contains the main chatbot logic, journalist functions, and LLM prompts.
+Contains the main patent engine with consolidated chatbot and journalist functionality.
 """
 
-from .chatbot import PatentChatbot
-from .journalist_functions import (
+from .patent_engine import (
+    PatentChatbot,
     analyze_patent_impact,
     generate_article_titles,
     generate_article_angles
