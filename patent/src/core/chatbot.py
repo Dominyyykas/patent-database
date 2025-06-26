@@ -10,7 +10,7 @@ from langchain_community.vectorstores import Chroma
 from langchain_openai import ChatOpenAI
 from sentence_transformers import SentenceTransformer
 
-from src.utils.token_tracker import TokenTracker
+from src.utils.token_tracker import token_tracker
 from src.utils.rate_limiter import RateLimiter
 from src.utils.function_cache import chat_cache
 from src.core.journalist_functions import (
@@ -54,7 +54,8 @@ class PatentChatbot:
     
     def __init__(self):
         """Initialize the chatbot with necessary components."""
-        self.token_tracker = TokenTracker()
+        # Initialize token tracker (use global instance)
+        self.token_tracker = token_tracker
         self.rate_limiter = RateLimiter()
         self.llm = ChatOpenAI(temperature=0, model="gpt-4o-mini")
         

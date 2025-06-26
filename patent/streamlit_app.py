@@ -257,14 +257,8 @@ with col2:
     st.markdown("### <span style='font-size:1.3rem;'>📄 Current Patent</span>", unsafe_allow_html=True)
     if st.session_state.current_patent:
         patent = st.session_state.current_patent
-        title = patent.get('title', 'Unknown')
-        if not title or title == 'Unknown':
-            title_html = '<span style="font-style: italic; color: #888;">No title available</span>'
-        else:
-            title_html = f'<span style="font-weight: bold; font-size: 1.3rem;">{title}</span>'
         st.markdown(f"""
         <div class="patent-card">
-            {title_html}<br/>
             <span style='font-weight:600;'>Abstract:</span><br/>
             <span>{patent.get('abstract', 'No abstract available')}</span>
         </div>

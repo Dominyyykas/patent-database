@@ -7,6 +7,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 
 from src.utils.function_cache import journalist_cache
+from src.utils.token_tracker import token_tracker
 from .prompts import (
     IMPACT_ANALYSIS_SYSTEM_PROMPT,
     get_impact_analysis_human_prompt,
@@ -354,10 +355,23 @@ def test_journalist_functions():
     print("\nAll tests completed!")
 
 def _call_llm(messages):
-    """Directly call the OpenAI Chat LLM and return the response content as string."""
-    llm = ChatOpenAI(temperature=0, model="gpt-4o-mini")
-    response = llm.invoke(messages)
-    return response.content
+    """Call the OpenAI Chat LLM with token tracking and return the response content as string."""
+    try:
+        llm = ChatOpenAI(temperature=0, model="gpt-4o-mini")
+        response = llm.invoke(messages)
+        
+        # Count tokens properly
+        prompt_text = str(messages)
+        prompt_tokens = token_tracker.count_tokens(prompt_text, "gpt-4o-mini")
+        completion_tokens = token_tracker.count_tokens(response.content, "gpt-4o-mini")
+        
+        # Track usage using global token tracker
+        token_tracker.track_usage(prompt_tokens, completion_tokens, "gpt-4o-mini")
+        
+        return response.content
+    except Exception as e:
+        logger.error(f"LLM call failed: {e}")
+        raise
 
 if __name__ == "__main__":
     test_journalist_functions() 
