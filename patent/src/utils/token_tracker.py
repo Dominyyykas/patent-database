@@ -24,10 +24,6 @@ class TokenTracker:
         "gpt-4o-mini": {
             "input": 0.00015,   # $0.15 per 1M tokens
             "output": 0.0006    # $0.60 per 1M tokens
-        },
-        "gpt-4o": {
-            "input": 0.005,     # $5.00 per 1M tokens  
-            "output": 0.015     # $15.00 per 1M tokens
         }
     }
     
@@ -42,8 +38,6 @@ class TokenTracker:
         
         # gpt-4o-mini uses cl100k_base encoding
         self.encoders["gpt-4o-mini"] = tiktoken.get_encoding("cl100k_base")
-        # gpt-4o uses cl100k_base encoding
-        self.encoders["gpt-4o"] = tiktoken.get_encoding("cl100k_base")
     
     def count_tokens(self, text: str, model: str = "gpt-4o-mini") -> int:
         """Count tokens in text using the appropriate encoder."""

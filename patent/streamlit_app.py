@@ -3,16 +3,13 @@ from datetime import datetime
 import csv
 from io import StringIO
 import time
+import re
 
 from src.core.patent_engine import (
     PatentChatbot,
-    analyze_patent_impact,
-    generate_article_titles,
-    generate_article_angles
+    journalist_function
 )
 from src.utils.token_tracker import token_tracker
-from src.utils.function_cache import journalist_cache, chat_cache
-from src.utils.rate_limiter import rate_limiter
 
 # Page configuration
 st.set_page_config(
@@ -86,9 +83,6 @@ if 'chatbot' not in st.session_state:
     st.session_state.chatbot = PatentChatbot()
     st.session_state.conversation_history = []
     st.session_state.current_patent = None
-    # Ensure token tracker is initialized
-    if not hasattr(token_tracker, '_initialized'):
-        token_tracker._initialized = True
 
 # Sidebar
 with st.sidebar:
@@ -112,22 +106,6 @@ with st.sidebar:
         mime="text/csv",
         disabled=not st.session_state.conversation_history
     )
-    # Log viewing
-    if st.button("View Log"):
-        log_path = "logs/patent_chatbot.log"
-        try:
-            with open(log_path, "r") as f:
-                lines = f.readlines()
-                last_lines = lines[-100:] if len(lines) > 100 else lines
-                log_content = "".join(last_lines)
-        except FileNotFoundError:
-            log_content = "Log file not found. No logs available yet."
-        except Exception as e:
-            log_content = f"Error reading log file: {e}"
-        with st.expander("Patent Chatbot Log (last 100 lines)", expanded=True):
-            st.text(log_content)
-    
-
     
     # Token Usage and Cost Tracking
     usage_summary = token_tracker.get_session_summary()
@@ -200,7 +178,20 @@ with col1:
             progress_bar.empty()
             status_text.empty()
             
-            error_msg = f"Error: {str(e)}"
+            # Check if it's a rate limit error
+            error_str = str(e)
+            if "Rate limit exceeded" in error_str:
+                # Extract wait time from error message
+                wait_match = re.search(r'Try again in ([\d.]+) (seconds?|minutes?)', error_str)
+                if wait_match:
+                    wait_time = wait_match.group(1)
+                    time_unit = wait_match.group(2)
+                    error_msg = f"⚠️ **Rate Limit Reached**\n\nYou've made too many requests too quickly. Please wait **{wait_time} {time_unit}** before trying again.\n\nThis helps us manage API costs and ensure fair usage for all users."
+                else:
+                    error_msg = f"⚠️ **Rate Limit Reached**\n\nYou've made too many requests too quickly. Please wait a moment before trying again."
+            else:
+                error_msg = f"❌ **Error**: {error_str}"
+            
             st.session_state.conversation_history.append({
                 "role": "assistant",
                 "content": error_msg,
@@ -245,7 +236,7 @@ with col2:
                     impact_progress.progress(25)
                     impact_status.text("🔍 Analyzing patent impact...")
                     
-                    impact_result = analyze_patent_impact(patent.get('abstract', ''), patent.get('patent_id', 'unknown'))
+                    impact_result = journalist_function('analyze_patent_impact', patent.get('abstract', ''), patent.get('patent_id', 'unknown'))
                     
                     # Update progress
                     impact_progress.progress(75)
@@ -256,13 +247,15 @@ with col2:
                     impact_status.text("✅ Impact analysis completed!")
                     
                     st.success("Impact analysis completed!")
-                    if isinstance(impact_result, dict):
+                    if isinstance(impact_result, dict) and 'error' not in impact_result:
                         st.markdown("**Impact Summary:**")
                         st.markdown(impact_result.get("impact_summary", "N/A"))
                         st.markdown("**Affected Industries:**")
                         st.markdown(", ".join(impact_result.get("affected_industries", [])))
                         st.markdown("**Predicted Timeline:**")
                         st.markdown(impact_result.get("predicted_timeline", "N/A"))
+                    elif isinstance(impact_result, dict) and 'error' in impact_result:
+                        st.error(f"Error: {impact_result['error']}")
                     else:
                         st.error("Could not analyze impact.")
                     
@@ -275,7 +268,19 @@ with col2:
                     # Clear progress on error
                     impact_progress.empty()
                     impact_status.empty()
-                    st.error(f"Error analyzing impact: {str(e)}")
+                    
+                    # Check if it's a rate limit error
+                    error_str = str(e)
+                    if "Rate limit exceeded" in error_str:
+                        wait_match = re.search(r'Try again in ([\d.]+) (seconds?|minutes?)', error_str)
+                        if wait_match:
+                            wait_time = wait_match.group(1)
+                            time_unit = wait_match.group(2)
+                            st.error(f"⚠️ **Rate Limit Reached**\n\nPlease wait **{wait_time} {time_unit}** before trying again.")
+                        else:
+                            st.error("⚠️ **Rate Limit Reached**\n\nPlease wait a moment before trying again.")
+                    else:
+                        st.error(f"Error analyzing impact: {error_str}")
         with col_title:
             if st.button("Generate Title", key="title_btn", help="Generate article titles", use_container_width=True):
                 # Create progress bar for title generation
@@ -287,7 +292,7 @@ with col2:
                     title_progress.progress(25)
                     title_status.text("✍️ Generating article titles...")
                     
-                    title_result = generate_article_titles(patent.get('abstract', ''), patent.get('patent_id', 'unknown'))
+                    title_result = journalist_function('generate_article_titles', patent.get('abstract', ''), patent.get('patent_id', 'unknown'))
                     
                     # Update progress
                     title_progress.progress(75)
@@ -302,6 +307,8 @@ with col2:
                         st.markdown("**Suggested Article Titles:**")
                         for i, title in enumerate(title_result, 1):
                             st.markdown(f"{i}. {title}")
+                    elif isinstance(title_result, dict) and 'error' in title_result:
+                        st.error(f"Error: {title_result['error']}")
                     else:
                         st.error("Could not generate article titles.")
                     
@@ -314,7 +321,19 @@ with col2:
                     # Clear progress on error
                     title_progress.empty()
                     title_status.empty()
-                    st.error(f"Error generating title: {str(e)}")
+                    
+                    # Check if it's a rate limit error
+                    error_str = str(e)
+                    if "Rate limit exceeded" in error_str:
+                        wait_match = re.search(r'Try again in ([\d.]+) (seconds?|minutes?)', error_str)
+                        if wait_match:
+                            wait_time = wait_match.group(1)
+                            time_unit = wait_match.group(2)
+                            st.error(f"⚠️ **Rate Limit Reached**\n\nPlease wait **{wait_time} {time_unit}** before trying again.")
+                        else:
+                            st.error("⚠️ **Rate Limit Reached**\n\nPlease wait a moment before trying again.")
+                    else:
+                        st.error(f"Error generating title: {error_str}")
         with col_angles:
             if st.button("Generate Angles", key="angles_btn", help="Generate article angles", use_container_width=True):
                 # Create progress bar for angles generation
@@ -326,7 +345,7 @@ with col2:
                     angles_progress.progress(25)
                     angles_status.text("🎯 Generating article angles...")
                     
-                    angles_result = generate_article_angles(patent.get('abstract', ''), patent.get('patent_id', 'unknown'))
+                    angles_result = journalist_function('generate_article_angles', patent.get('abstract', ''), patent.get('patent_id', 'unknown'))
                     
                     # Update progress
                     angles_progress.progress(75)
@@ -362,7 +381,19 @@ with col2:
                     # Clear progress on error
                     angles_progress.empty()
                     angles_status.empty()
-                    st.error(f"Error generating angles: {str(e)}")
+                    
+                    # Check if it's a rate limit error
+                    error_str = str(e)
+                    if "Rate limit exceeded" in error_str:
+                        wait_match = re.search(r'Try again in ([\d.]+) (seconds?|minutes?)', error_str)
+                        if wait_match:
+                            wait_time = wait_match.group(1)
+                            time_unit = wait_match.group(2)
+                            st.error(f"⚠️ **Rate Limit Reached**\n\nPlease wait **{wait_time} {time_unit}** before trying again.")
+                        else:
+                            st.error("⚠️ **Rate Limit Reached**\n\nPlease wait a moment before trying again.")
+                    else:
+                        st.error(f"Error generating angles: {error_str}")
         st.markdown("</div>", unsafe_allow_html=True)
     else:
         st.info("No patent selected. Start a conversation to see patents here!")

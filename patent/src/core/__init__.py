@@ -6,26 +6,30 @@ Contains the main patent engine with consolidated chatbot and journalist functio
 
 from .patent_engine import (
     PatentChatbot,
-    analyze_patent_impact,
-    generate_article_titles,
-    generate_article_angles
+    journalist_function,
+    detect_journalist_function
 )
 from .prompts import (
     RAG_SYSTEM_PROMPT,
-    get_rag_human_prompt,
+    RAG_HUMAN_PROMPT,
     IMPACT_ANALYSIS_SYSTEM_PROMPT,
+    IMPACT_ANALYSIS_HUMAN_PROMPT,
     ARTICLE_TITLES_SYSTEM_PROMPT,
-    ARTICLE_ANGLES_SYSTEM_PROMPT
+    ARTICLE_TITLES_HUMAN_PROMPT,
+    ARTICLE_ANGLES_SYSTEM_PROMPT,
+    ARTICLE_ANGLES_HUMAN_PROMPT
 )
 
 __all__ = [
     "PatentChatbot",
-    "analyze_patent_impact",
-    "generate_article_titles", 
-    "generate_article_angles",
+    "journalist_function",
+    "detect_journalist_function",
     "RAG_SYSTEM_PROMPT",
-    "get_rag_human_prompt",
+    "RAG_HUMAN_PROMPT",
     "IMPACT_ANALYSIS_SYSTEM_PROMPT",
+    "IMPACT_ANALYSIS_HUMAN_PROMPT",
     "ARTICLE_TITLES_SYSTEM_PROMPT",
-    "ARTICLE_ANGLES_SYSTEM_PROMPT"
+    "ARTICLE_TITLES_HUMAN_PROMPT",
+    "ARTICLE_ANGLES_SYSTEM_PROMPT",
+    "ARTICLE_ANGLES_HUMAN_PROMPT"
 ]

@@ -1,13 +1,4 @@
-"""
-Centralized prompt management for the Patent RAG Chatbot.
-
-This module contains all system and human prompts used throughout the application,
-ensuring consistency and easy maintenance of AI prompt engineering.
-"""
-
-# =============================================================================
 # RAG CHATBOT PROMPTS
-# =============================================================================
 
 RAG_SYSTEM_PROMPT = """You are an expert patent analyst and technology journalist. Your job is to find and explain 
 patents that are RELATED to the user's query, even if they don't contain the exact keywords.
@@ -34,18 +25,14 @@ For each patent, structure your response as:
 
 NEVER say 'no relevant patents found' - always find connections and explain them, even if they require creative thinking about applications."""
 
-def get_rag_human_prompt(query: str, docs_text: str) -> str:
-    """Generate human prompt for RAG chatbot with similarity context."""
-    return f"""User Query: {query}
+RAG_HUMAN_PROMPT = """User Query: {query}
 
 Retrieved Patent Abstracts (with similarity scores):
 {docs_text}
 
 Please analyze these patents and explain their relevance to the user's query. Even if the similarity scores are low, find creative connections and explain how these patents could be related to or used in the context of the query. Remember to include relevance, probability assessment, and specific applications for each patent."""
 
-# =============================================================================
 # JOURNALIST FUNCTION PROMPTS
-# =============================================================================
 
 # Impact Analysis Prompts
 IMPACT_ANALYSIS_SYSTEM_PROMPT = """You are an expert technology analyst for journalists. Analyze the patent abstract 
@@ -56,9 +43,7 @@ and determine its potential impact. Provide analysis in JSON format with three f
 Be specific about the technology described. 
 Return only valid JSON, no additional text."""
 
-def get_impact_analysis_human_prompt(patent_abstract: str) -> str:
-    """Generate human prompt for impact analysis."""
-    return f"Patent: {patent_abstract}"
+IMPACT_ANALYSIS_HUMAN_PROMPT = """Patent: {patent_abstract}"""
 
 # Article Titles Prompts
 ARTICLE_TITLES_SYSTEM_PROMPT = """You are an expert technology journalist. Generate 3 compelling article titles for a patent.
@@ -72,9 +57,7 @@ Requirements:
 
 Return ONLY a JSON array of 3 strings, no other text."""
 
-def get_article_titles_human_prompt(patent_abstract: str) -> str:
-    """Generate human prompt for article title generation."""
-    return f"Patent Abstract: {patent_abstract}"
+ARTICLE_TITLES_HUMAN_PROMPT = """Patent Abstract: {patent_abstract}"""
 
 # Article Angles Prompts
 ARTICLE_ANGLES_SYSTEM_PROMPT = """You are a technology reporter analyzing a patent for article angles. 
@@ -85,35 +68,4 @@ Provide specific analysis in JSON format with three fields:
 Be specific about the technology described. 
 Return only valid JSON, no additional text."""
 
-def get_article_angles_human_prompt(patent_abstract: str) -> str:
-    """Generate human prompt for article angles generation."""
-    return f"Patent: {patent_abstract}"
-
-# =============================================================================
-# PROMPT VALIDATION
-# =============================================================================
-
-def validate_prompt_content(prompt: str) -> bool:
-    """Validate that a prompt contains appropriate content."""
-    if not prompt or not isinstance(prompt, str):
-        return False
-    
-    # Check for minimum length
-    if len(prompt.strip()) < 10:
-        return False
-    
-    # Check for basic structure indicators
-    has_role_definition = any(keyword in prompt.lower() for keyword in 
-                            ['you are', 'your job', 'your role', 'expert', 'analyst'])
-    
-    return has_role_definition
-
-def get_prompt_summary() -> dict:
-    """Get a summary of all available prompts."""
-    return {
-        "rag_system": "Patent analyst and technology journalist role definition",
-        "impact_analysis_system": "Technology analyst for impact assessment",
-        "article_titles_system": "Technology journalist for title generation", 
-        "article_angles_system": "Technology reporter for angle analysis",
-        "human_prompts": "Dynamic prompts generated from user input and patent data"
-    } 
+ARTICLE_ANGLES_HUMAN_PROMPT = """Patent: {patent_abstract}""" 

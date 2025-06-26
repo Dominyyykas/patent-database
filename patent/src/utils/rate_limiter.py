@@ -8,8 +8,8 @@ import os
 logger = logging.getLogger(__name__)
 
 # Inline rate limiting settings
-MAX_REQUESTS_PER_MINUTE = int(os.getenv("MAX_REQUESTS_PER_MINUTE", "20"))
-MAX_REQUESTS_PER_HOUR = int(os.getenv("MAX_REQUESTS_PER_HOUR", "500"))
+MAX_REQUESTS_PER_MINUTE = int(os.getenv("MAX_REQUESTS_PER_MINUTE", "20"))  # Back to normal
+MAX_REQUESTS_PER_HOUR = int(os.getenv("MAX_REQUESTS_PER_HOUR", "500"))     # Back to normal
 
 class RateLimiter:
     """Thread-safe rate limiter with per-client tracking."""
@@ -36,24 +36,30 @@ class RateLimiter:
             # Clean old requests
             self._clean_old_requests(client_id, current_time)
             
-            # Check minute limit
+            # Get current usage
             minute_requests = len(self.client_requests[client_id]["minute"])
+            hour_requests = len(self.client_requests[client_id]["hour"])
+            
+            logger.info(f"Rate limit check for {client_id}: {minute_requests}/{self.max_requests_per_minute} per minute, {hour_requests}/{self.max_requests_per_hour} per hour")
+            
+            # Check minute limit
             if minute_requests >= self.max_requests_per_minute:
                 wait_time = 60 - (current_time - self.client_requests[client_id]["minute"][0])
+                logger.warning(f"Rate limit exceeded for {client_id}: {minute_requests} requests in current minute. Try again in {wait_time:.1f} seconds.")
                 return False, f"Rate limit exceeded. Try again in {wait_time:.1f} seconds."
             
             # Check hour limit
-            hour_requests = len(self.client_requests[client_id]["hour"])
             if hour_requests >= self.max_requests_per_hour:
                 oldest_request = self.client_requests[client_id]["hour"][0]
                 wait_time = 3600 - (current_time - oldest_request)
+                logger.warning(f"Hourly rate limit exceeded for {client_id}: {hour_requests} requests in current hour. Try again in {wait_time/60:.1f} minutes.")
                 return False, f"Hourly rate limit exceeded. Try again in {wait_time/60:.1f} minutes."
             
             # Record the request
             self.client_requests[client_id]["minute"].append(current_time)
             self.client_requests[client_id]["hour"].append(current_time)
             
-            logger.debug(f"Request allowed for {client_id}. "
+            logger.info(f"Request allowed for {client_id}. "
                         f"Minute: {minute_requests + 1}/{self.max_requests_per_minute}, "
                         f"Hour: {hour_requests + 1}/{self.max_requests_per_hour}")
             

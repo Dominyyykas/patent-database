@@ -1,8 +1,20 @@
 import os
 import json
 import time
+import logging
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),  # Console output
+        logging.FileHandler('logs/patent_engine.log')  # File output
+    ]
+)
+logger = logging.getLogger(__name__)
 
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_community.vectorstores import Chroma
@@ -11,42 +23,27 @@ from sentence_transformers import SentenceTransformer
 
 from src.utils.token_tracker import token_tracker
 from src.utils.rate_limiter import rate_limiter
+from src.utils.function_cache import chat_cache, journalist_cache
 from .prompts import (
     RAG_SYSTEM_PROMPT,
-    get_rag_human_prompt,
+    RAG_HUMAN_PROMPT,
     IMPACT_ANALYSIS_SYSTEM_PROMPT,
-    get_impact_analysis_human_prompt,
+    IMPACT_ANALYSIS_HUMAN_PROMPT,
     ARTICLE_TITLES_SYSTEM_PROMPT,
-    get_article_titles_human_prompt,
+    ARTICLE_TITLES_HUMAN_PROMPT,
     ARTICLE_ANGLES_SYSTEM_PROMPT,
-    get_article_angles_human_prompt
+    ARTICLE_ANGLES_HUMAN_PROMPT
 )
+
 
 # Load environment variables
 load_dotenv()
 
-# ========== CONFIGURATION ==========
+#CONFIGURATION 
 MAX_ABSTRACT_LENGTH = 10000
 LLM_MODEL = "gpt-4o-mini"
 VECTOR_DB_PATH = "db/chroma_db"
 COLLECTION_NAME = "patent_chunks"
-
-# ========== SIMPLE UTILITIES ==========
-
-class SimpleCache:
-    """Lightweight in-memory cache for this session"""
-    def __init__(self):
-        self.data = {}
-    
-    def get(self, key: str, namespace: str = "default"):
-        return self.data.get((namespace, key))
-    
-    def set(self, key: str, namespace: str, value: Any):
-        self.data[(namespace, key)] = value
-
-# Global caches
-chat_cache = SimpleCache()
-journalist_cache = SimpleCache()
 
 class SimpleEmbeddings:
     """Wrapper for SentenceTransformer to work with LangChain's Chroma."""
@@ -64,12 +61,17 @@ class SimpleEmbeddings:
 
 def _call_llm(messages) -> str:
     """Unified LLM call with rate limiting and token tracking"""
-    # Rate limiting
+    logger.info("Starting LLM call...")
+    
+    # Rate limit
     allowed, error_message = rate_limiter.is_allowed()
     if not allowed:
+        logger.warning(f"Rate limit exceeded: {error_message}")
         raise Exception(f"Rate limit exceeded: {error_message}")
     
-    # Make API call
+    logger.info("Rate limit check passed, making API call...")
+    
+    # API call
     llm = ChatOpenAI(temperature=0, model=LLM_MODEL)
     response = llm.invoke(messages)
     
@@ -78,6 +80,8 @@ def _call_llm(messages) -> str:
     prompt_tokens = token_tracker.count_tokens(prompt_text, LLM_MODEL)
     completion_tokens = token_tracker.count_tokens(response.content, LLM_MODEL)
     token_tracker.track_usage(prompt_tokens, completion_tokens, LLM_MODEL)
+    
+    logger.info(f"LLM call completed. Tokens: {prompt_tokens} prompt, {completion_tokens} completion")
     
     return response.content
 
@@ -88,7 +92,7 @@ def format_patent_context(patents: List[Dict[str, Any]]) -> str:
         for i, p in enumerate(patents)
     ])
 
-# ========== JOURNALIST FUNCTIONS (DRY) ==========
+# ========== JOURNALIST FUNCTIONS ==========
 
 def detect_journalist_function(query: str) -> Optional[str]:
     """Detect which journalist function to call based on user query."""
@@ -109,30 +113,15 @@ def detect_journalist_function(query: str) -> Optional[str]:
 JOURNALIST_CONFIGS = {
     'analyze_patent_impact': {
         'system_prompt': IMPACT_ANALYSIS_SYSTEM_PROMPT,
-        'human_prompt_func': get_impact_analysis_human_prompt,
-        'fallback': {
-            "impact_summary": "This patent technology could have significant impact depending on implementation and market adoption.",
-            "affected_industries": ["Technology", "Manufacturing"],
-            "predicted_timeline": "Timeline depends on technology complexity and market readiness"
-        }
+        'human_prompt': IMPACT_ANALYSIS_HUMAN_PROMPT
     },
     'generate_article_titles': {
         'system_prompt': ARTICLE_TITLES_SYSTEM_PROMPT,
-        'human_prompt_func': get_article_titles_human_prompt,
-        'fallback': [
-            "Innovative Patent Technology Breakthrough",
-            "New Patent Promises Industry Transformation",
-            "Revolutionary Patent Technology Unveiled"
-        ]
+        'human_prompt': ARTICLE_TITLES_HUMAN_PROMPT
     },
     'generate_article_angles': {
         'system_prompt': ARTICLE_ANGLES_SYSTEM_PROMPT,
-        'human_prompt_func': get_article_angles_human_prompt,
-        'fallback': {
-            "implementation_timeline": "Timeline depends on technology complexity and market readiness",
-            "market_disruption_assessment": "Impact will vary based on industry adoption and competitive landscape",
-            "widespread_adoption_likelihood": "Likelihood depends on market conditions and competitive factors"
-        }
+        'human_prompt': ARTICLE_ANGLES_HUMAN_PROMPT
     }
 }
 
@@ -147,16 +136,19 @@ def journalist_function(function_name: str, patent_abstract: str, patent_id: str
     
     # Check cache
     if patent_id:
+        cache_key = f"{patent_id}_{function_name}"
         cached_result = journalist_cache.get(patent_id, function_name)
         if cached_result:
+            logger.info(f"Journalist cache HIT for key: {cache_key}")
             return cached_result
-    
+        logger.info(f"Journalist cache MISS for key: {cache_key}")
+
     config = JOURNALIST_CONFIGS[function_name]
     
     try:
         # Prepare messages
         system_prompt = config['system_prompt']
-        human_prompt = config['human_prompt_func'](patent_abstract)
+        human_prompt = config['human_prompt'].format(patent_abstract=patent_abstract)
         messages = [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
         
         # Call LLM
@@ -173,37 +165,29 @@ def journalist_function(function_name: str, patent_abstract: str, patent_id: str
         
         # Cache result
         if patent_id:
+            logger.info(f"Setting journalist cache for key: {cache_key}")
             journalist_cache.set(patent_id, function_name, result)
         
         return result
         
     except Exception as e:
-        print(f"Journalist function error: {e}")
-        return config['fallback']
-
-# Convenience functions for backward compatibility
-def analyze_patent_impact(patent_abstract: str, patent_id: str = None) -> Dict[str, Any]:
-    return journalist_function('analyze_patent_impact', patent_abstract, patent_id)
-
-def generate_article_titles(patent_abstract: str, patent_id: str = None) -> List[str]:
-    result = journalist_function('generate_article_titles', patent_abstract, patent_id)
-    return result if isinstance(result, list) else result.get('titles', JOURNALIST_CONFIGS['generate_article_titles']['fallback'])
-
-def generate_article_angles(patent_abstract: str, patent_id: str = None) -> Dict[str, Any]:
-    return journalist_function('generate_article_angles', patent_abstract, patent_id)
+        logger.error(f"Journalist function error: {e}", exc_info=True)
+        return {"error": f"Analysis failed: {str(e)}. Please try again."}
 
 # ========== PATENT CHATBOT ==========
 
 class PatentChatbot:
-    """Simplified patent chatbot with all core functionality"""
+    """Patent chatbot with all core functionality"""
     
     def __init__(self):
+        logger.info("Initializing PatentChatbot...")
         self.llm = ChatOpenAI(temperature=0, model=LLM_MODEL)
         self.vector_store = self._setup_vector_store()
     
     def _setup_vector_store(self):
         """Set up ChromaDB vector store"""
         try:
+            logger.info(f"Setting up ChromaDB from path: {VECTOR_DB_PATH}")
             embeddings = SimpleEmbeddings()
             return Chroma(
                 persist_directory=VECTOR_DB_PATH,
@@ -211,7 +195,7 @@ class PatentChatbot:
                 collection_name=COLLECTION_NAME
             )
         except Exception as e:
-            print(f"Vector store setup error: {e}")
+            logger.error(f"Vector store setup error: {e}", exc_info=True)
             return None
     
     def _retrieve_patents(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
@@ -220,7 +204,9 @@ class PatentChatbot:
             return []
         
         try:
+            logger.info(f"Retrieving top {k} patents for query: '{query[:50]}...'")
             results = self.vector_store.similarity_search_with_relevance_scores(query, k=k)
+            
             patents = []
             
             for doc, score in results:
@@ -231,22 +217,60 @@ class PatentChatbot:
                 }
                 patents.append(patent_info)
             
+            logger.info(f"Retrieved {len(patents)} patents.")
             return patents
         except Exception as e:
-            print(f"Patent retrieval error: {e}")
+            logger.error(f"Patent retrieval error: {e}")
             return []
     
     def chat(self, user_input: str, conversation_history: List[Dict[str, str]] = None) -> Dict[str, Any]:
         """Main chat method"""
+        # Input validation
+        if not user_input or not isinstance(user_input, str):
+            return {
+                "response": "Please provide a valid query.",
+                "error": "Invalid input",
+                "patents": [],
+                "journalist_analysis": None
+            }
+        
+        user_input_clean = user_input.strip()
+        if len(user_input_clean) < 3:
+            return {
+                "response": "Please provide a more detailed query (at least 3 characters).",
+                "error": "Query too short",
+                "patents": [],
+                "journalist_analysis": None
+            }
+        
+        if len(user_input) > 1000:
+            return {
+                "response": "Query too long. Please keep it under 1000 characters.",
+                "error": "Query too long",
+                "patents": [],
+                "journalist_analysis": None
+            }
+        
+        # Check for potentially malicious content (basic check)
+        suspicious_patterns = ['<script', 'javascript:', 'data:text/html', 'vbscript:']
+        if any(pattern in user_input.lower() for pattern in suspicious_patterns):
+            return {
+                "response": "Query contains potentially unsafe content. Please try a different query.",
+                "error": "Suspicious content detected",
+                "patents": [],
+                "journalist_analysis": None
+            }
+        
         # Check cache
         cache_key = f"{user_input}_{hash(str(conversation_history))}"
-        cached_response = chat_cache.get(cache_key, "chat")
+        cached_response = chat_cache.get(cache_key)
         if cached_response:
             return cached_response
+        logger.info(f"Chat cache MISS for key: '{user_input_clean}'")
         
         try:
             # Retrieve patents
-            relevant_patents = self._retrieve_patents(user_input)
+            relevant_patents = self._retrieve_patents(user_input_clean)
             
             if not relevant_patents:
                 return {
@@ -256,7 +280,7 @@ class PatentChatbot:
                 }
             
             # Check for journalist function
-            detected_function = detect_journalist_function(user_input)
+            detected_function = detect_journalist_function(user_input_clean)
             journalist_result = None
             
             if detected_function:
@@ -269,7 +293,7 @@ class PatentChatbot:
             
             messages = [
                 SystemMessage(content=RAG_SYSTEM_PROMPT), 
-                HumanMessage(content=get_rag_human_prompt(user_input, docs_text))
+                HumanMessage(content=RAG_HUMAN_PROMPT.format(query=user_input_clean, docs_text=docs_text))
             ]
             
             response = _call_llm(messages)
@@ -281,11 +305,12 @@ class PatentChatbot:
             }
             
             # Cache result
-            chat_cache.set(cache_key, "chat", result)
+            logger.info(f"Setting chat cache for key: '{user_input_clean}'")
+            chat_cache.set(cache_key, result)
             return result
             
         except Exception as e:
-            print(f"Chat error: {e}")
+            logger.error(f"Chat error: {e}", exc_info=True)
             return {
                 "response": "I encountered an error while processing your request. Please try again.",
                 "error": str(e),

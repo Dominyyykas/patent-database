@@ -38,7 +38,7 @@ class JournalistFunctionCache:
         self.cache_file = cache_file
         self.ttl_hours = ttl_hours
         self._init_database()
-        
+    
     def _init_database(self):
         """Initialize the SQLite database for caching."""
         try:
@@ -184,31 +184,6 @@ class JournalistFunctionCache:
             logger.error(f"Error deleting from cache: {e}")
             return False
     
-    def clear_expired(self) -> int:
-        """Clear all expired cache entries and return count of cleared items."""
-        try:
-            conn = sqlite3.connect(self.cache_file)
-            cursor = conn.cursor()
-            
-            # Delete expired entries
-            cursor.execute('''
-                DELETE FROM journalist_cache 
-                WHERE expires_at IS NOT NULL AND expires_at < ?
-            ''', (datetime.now().isoformat(),))
-            
-            deleted_count = cursor.rowcount
-            conn.commit()
-            conn.close()
-            
-            if deleted_count > 0:
-                logger.info(f"Cleared {deleted_count} expired cache entries")
-            
-            return deleted_count
-            
-        except Exception as e:
-            logger.error(f"Error clearing expired cache: {e}")
-            return 0
-    
     def clear_all(self) -> bool:
         """Clear all cached results."""
         try:
@@ -225,47 +200,137 @@ class JournalistFunctionCache:
         except Exception as e:
             logger.error(f"Error clearing cache: {e}")
             return False
-    
-    def get_stats(self) -> Dict[str, Any]:
-        """Get cache statistics."""
-        try:
-            conn = sqlite3.connect(self.cache_file)
-            cursor = conn.cursor()
-            
-            # Total entries
-            cursor.execute('SELECT COUNT(*) FROM journalist_cache')
-            total_entries = cursor.fetchone()[0]
-            
-            # Expired entries
-            cursor.execute('''
-                SELECT COUNT(*) FROM journalist_cache 
-                WHERE expires_at IS NOT NULL AND expires_at < ?
-            ''', (datetime.now().isoformat(),))
-            expired_entries = cursor.fetchone()[0]
-            
-            # Function type breakdown
-            cursor.execute('''
-                SELECT function_type, COUNT(*) 
-                FROM journalist_cache 
-                GROUP BY function_type
-            ''')
-            function_breakdown = dict(cursor.fetchall())
-            
-            conn.close()
-            
-            return {
-                "total_entries": total_entries,
-                "expired_entries": expired_entries,
-                "valid_entries": total_entries - expired_entries,
-                "function_breakdown": function_breakdown
-            }
-            
-        except Exception as e:
-            logger.error(f"Error getting cache stats: {e}")
-            return {"error": str(e)}
 
 # Global cache instance
 journalist_cache = JournalistFunctionCache()
 
+# Generic cache for chat responses
+class GenericCache:
+    """Generic cache for any type of data with TTL."""
+    
+    def __init__(self, cache_file: str = "generic_cache.db", ttl_hours: int = 24):
+        self.cache_file = cache_file
+        self.ttl_hours = ttl_hours
+        self._init_database()
+    
+    def _init_database(self):
+        """Initialize the SQLite database for caching."""
+        try:
+            conn = sqlite3.connect(self.cache_file)
+            cursor = conn.cursor()
+            
+            # Create cache table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS generic_cache (
+                    cache_key TEXT PRIMARY KEY,
+                    result TEXT,
+                    created_at TEXT,
+                    expires_at TEXT
+                )
+            ''')
+            
+            conn.commit()
+            conn.close()
+            logger.info(f"Generic cache initialized: {self.cache_file}")
+            
+        except Exception as e:
+            logger.error(f"Error initializing generic cache database: {e}")
+    
+    def get(self, cache_key: str) -> Optional[Any]:
+        """Get a cached result for the given key."""
+        try:
+            conn = sqlite3.connect(self.cache_file)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT result, expires_at 
+                FROM generic_cache 
+                WHERE cache_key = ?
+            ''', (cache_key,))
+            
+            row = cursor.fetchone()
+            conn.close()
+            
+            if row:
+                result_json, expires_at_str = row
+                
+                # Check if expired
+                if expires_at_str:
+                    expires_at = datetime.fromisoformat(expires_at_str)
+                    if datetime.now() > expires_at:
+                        logger.info(f"Generic cache expired for {cache_key}")
+                        self.delete(cache_key)
+                        return None
+                
+                # Parse and return result
+                result = json.loads(result_json)
+                logger.info(f"Generic cache HIT for {cache_key}")
+                return result
+            else:
+                logger.info(f"Generic cache MISS for {cache_key}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error retrieving from generic cache: {e}")
+            return None
+    
+    def set(self, cache_key: str, result: Any) -> bool:
+        """Store a result in the cache."""
+        try:
+            # Calculate expiration time
+            expires_at = None
+            if self.ttl_hours:
+                expires_at = datetime.now() + timedelta(hours=self.ttl_hours)
+            
+            # Serialize result
+            result_json = json.dumps(result, default=str)
+            created_at = datetime.now()
+            
+            conn = sqlite3.connect(self.cache_file)
+            cursor = conn.cursor()
+            
+            # Insert or replace
+            cursor.execute('''
+                INSERT OR REPLACE INTO generic_cache 
+                (cache_key, result, created_at, expires_at)
+                VALUES (?, ?, ?, ?)
+            ''', (
+                cache_key, 
+                result_json, 
+                created_at.isoformat(),
+                expires_at.isoformat() if expires_at else None
+            ))
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"Generic cached result for {cache_key}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error storing in generic cache: {e}")
+            return False
+    
+    def delete(self, cache_key: str) -> bool:
+        """Delete a specific cached result."""
+        try:
+            conn = sqlite3.connect(self.cache_file)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                DELETE FROM generic_cache 
+                WHERE cache_key = ?
+            ''', (cache_key,))
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"Deleted generic cache for {cache_key}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error deleting from generic cache: {e}")
+            return False
+
 # Global chat cache instance (for chatbot responses)
-chat_cache = JournalistFunctionCache(cache_file="chat_cache.db", ttl_hours=12) 
+chat_cache = GenericCache(cache_file="chat_cache.db", ttl_hours=24) 
