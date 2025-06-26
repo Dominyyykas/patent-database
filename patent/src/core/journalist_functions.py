@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI
 
 from src.utils.function_cache import journalist_cache
 from src.utils.token_tracker import token_tracker
+from src.utils.rate_limiter import rate_limiter
 from .prompts import (
     IMPACT_ANALYSIS_SYSTEM_PROMPT,
     get_impact_analysis_human_prompt,
@@ -355,8 +356,14 @@ def test_journalist_functions():
     print("\nAll tests completed!")
 
 def _call_llm(messages):
-    """Call the OpenAI Chat LLM with token tracking and return the response content as string."""
+    """Call the OpenAI Chat LLM with token tracking, rate limiting and return the response content as string."""
     try:
+        # Check rate limit for this specific API call
+        allowed, error_message = rate_limiter.is_allowed()
+        logger.info(f"Journalist rate limiter called - allowed: {allowed}, current stats: {rate_limiter.get_stats()}")
+        if not allowed:
+            raise Exception(f"Rate limit exceeded: {error_message}")
+        
         llm = ChatOpenAI(temperature=0, model="gpt-4o-mini")
         response = llm.invoke(messages)
         

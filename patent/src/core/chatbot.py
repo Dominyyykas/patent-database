@@ -11,7 +11,7 @@ from langchain_openai import ChatOpenAI
 from sentence_transformers import SentenceTransformer
 
 from src.utils.token_tracker import token_tracker
-from src.utils.rate_limiter import RateLimiter
+from src.utils.rate_limiter import rate_limiter
 from src.utils.function_cache import chat_cache
 from src.core.journalist_functions import (
     detect_journalist_function,
@@ -56,7 +56,7 @@ class PatentChatbot:
         """Initialize the chatbot with necessary components."""
         # Initialize token tracker (use global instance)
         self.token_tracker = token_tracker
-        self.rate_limiter = RateLimiter()
+        self.rate_limiter = rate_limiter
         self.llm = ChatOpenAI(temperature=0, model="gpt-4o-mini")
         
         # Initialize vector store
@@ -65,8 +65,14 @@ class PatentChatbot:
         logger.info("PatentChatbot initialized successfully")
     
     def _call_llm_with_tracking(self, messages):
-        """Call LLM with token tracking."""
+        """Call LLM with token tracking and rate limiting."""
         try:
+            # Check rate limit for this specific API call
+            allowed, error_message = self.rate_limiter.is_allowed()
+            logger.info(f"Rate limiter called - allowed: {allowed}, current stats: {self.rate_limiter.get_stats()}")
+            if not allowed:
+                raise Exception(f"Rate limit exceeded: {error_message}")
+            
             response = self.llm.invoke(messages)
             
             # Count tokens properly
@@ -169,14 +175,6 @@ class PatentChatbot:
             Chatbot response with relevant information
         """
         logger.info(f"Processing user input: {user_input[:100]}...")
-        
-        # Rate limiting check
-        allowed, error_message = self.rate_limiter.is_allowed()
-        if not allowed:
-            return {
-                "response": error_message,
-                "error": "rate_limit_exceeded"
-            }
         
         # Check cache
         cache_key = f"{user_input}_{hash(str(conversation_history))}"

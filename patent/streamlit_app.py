@@ -11,7 +11,7 @@ from src.core.journalist_functions import (
     generate_article_angles
 )
 from src.utils.token_tracker import token_tracker
-from src.utils.function_cache import journalist_cache
+from src.utils.function_cache import journalist_cache, chat_cache
 from src.utils.rate_limiter import rate_limiter
 
 # Page configuration
@@ -127,17 +127,7 @@ with st.sidebar:
         with st.expander("Patent Chatbot Log (last 100 lines)", expanded=True):
             st.text(log_content)
     
-    # Rate Limiting Information
-    st.markdown("---")
-    rate_stats = rate_limiter.get_stats("default")
-    st.markdown(f"""
-    <div class="token-usage-card">
-        <strong>🚦 Rate Limits</strong><br/>
-        This Minute: {rate_stats['requests_this_minute']}/{rate_stats['minute_limit']}<br/>
-        This Hour: {rate_stats['requests_this_hour']}/{rate_stats['hour_limit']}<br/>
-        <span style="color: #28a745; font-size: 0.9rem;">Remaining: {rate_stats['minute_remaining']} (min), {rate_stats['hour_remaining']} (hour)</span>
-    </div>
-    """, unsafe_allow_html=True)
+
     
     # Token Usage and Cost Tracking
     usage_summary = token_tracker.get_session_summary()
@@ -149,29 +139,7 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     
-    # Cache Statistics
-    cache_stats = journalist_cache.get_stats()
-    if "error" not in cache_stats:
-        st.markdown(f"""
-        <div class="token-usage-card">
-            <strong>⚡ Cache Performance</strong><br/>
-            Valid Entries: {cache_stats['valid_entries']}<br/>
-            Total Entries: {cache_stats['total_entries']}<br/>
-            <span style="color: #28a745; font-size: 0.9rem;">Saving API calls & costs!</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Cache management buttons
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🗑️ Clear Cache", help="Clear all cached journalist function results"):
-                journalist_cache.clear_all()
-                st.rerun()
-        with col2:
-            if st.button("🧹 Clear Expired", help="Clear expired cache entries"):
-                cleared = journalist_cache.clear_expired()
-                st.info(f"Cleared {cleared} expired entries")
-                st.rerun()
+
 
 # Main content area
 col1, col2 = st.columns([1, 1])
@@ -277,7 +245,7 @@ with col2:
                     impact_progress.progress(25)
                     impact_status.text("🔍 Analyzing patent impact...")
                     
-                    impact_result = analyze_patent_impact(patent.get('abstract', ''))
+                    impact_result = analyze_patent_impact(patent.get('abstract', ''), patent.get('patent_id', 'unknown'))
                     
                     # Update progress
                     impact_progress.progress(75)
@@ -319,7 +287,7 @@ with col2:
                     title_progress.progress(25)
                     title_status.text("✍️ Generating article titles...")
                     
-                    title_result = generate_article_titles(patent.get('abstract', ''))
+                    title_result = generate_article_titles(patent.get('abstract', ''), patent.get('patent_id', 'unknown'))
                     
                     # Update progress
                     title_progress.progress(75)
@@ -358,7 +326,7 @@ with col2:
                     angles_progress.progress(25)
                     angles_status.text("🎯 Generating article angles...")
                     
-                    angles_result = generate_article_angles(patent.get('abstract', ''))
+                    angles_result = generate_article_angles(patent.get('abstract', ''), patent.get('patent_id', 'unknown'))
                     
                     # Update progress
                     angles_progress.progress(75)
